@@ -1,0 +1,92 @@
+#include <WiFi.h>
+#include <FirebaseESP32.h>
+
+// Reemplaza con credenciales de Firebase
+#define FIREBASE_HOST "your-project-id.firebaseio.com"
+#define FIREBASE_AUTH "your-database-secret"
+
+#define WIFI_SSID "your-SSID"
+#define WIFI_PASSWORD "your-PASSWORD"
+
+// Configuración del sensor LDR
+#define LDR_PIN 34 // Cambia según tu conexión
+#define LDR_THRESHOLD 500 // Ajusta este valor según tu necesidad
+
+// Configuración del motor
+#define MOTOR_PIN1 12
+#define MOTOR_PIN2 13
+#define ENABLE_PIN 14
+
+FirebaseData firebaseData;
+FirebaseAuth firebaseAuth;
+FirebaseConfig firebaseConfig;
+
+void setup() {
+  Serial.begin(115200);
+
+  // Conectar a Wi-Fi
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("Connected to Wi-Fi");
+
+  // Configurar Firebase
+  firebaseConfig.api_key = FIREBASE_AUTH;
+  firebaseConfig.database_url = FIREBASE_HOST;
+  firebaseAuth.user.email = "your-email@example.com";
+  firebaseAuth.user.password = "your-password";
+  Firebase.begin(&firebaseConfig, &firebaseAuth);
+
+  // Configurar pines
+  pinMode(MOTOR_PIN1, OUTPUT);
+  pinMode(MOTOR_PIN2, OUTPUT);
+  pinMode(ENABLE_PIN, OUTPUT);
+  pinMode(LDR_PIN, INPUT);
+}
+
+void loop() {
+  // Leer el valor del sensor LDR
+  int ldrValue = analogRead(LDR_PIN);
+  Serial.print("LDR Value: ");
+  Serial.println(ldrValue);
+
+  // Leer el estado de la persiana desde Firebase
+  if (Firebase.getInt(firebaseData, "/motorState")) {
+    int motorState = firebaseData.intData();
+    Serial.print("Motor State from Firebase: ");
+    Serial.println(motorState);
+
+    // Controlar el motor según el estado recibido
+    if (motorState == 1) {
+      // Subir la persiana
+      digitalWrite(MOTOR_PIN1, HIGH);
+      digitalWrite(MOTOR_PIN2, LOW);
+      analogWrite(ENABLE_PIN, 255); // Velocidad máxima
+    } else if (motorState == 0) {
+      // Bajar la persiana
+      digitalWrite(MOTOR_PIN1, LOW);
+      digitalWrite(MOTOR_PIN2, HIGH);
+      analogWrite(ENABLE_PIN, 255); // Velocidad máxima
+    } else {
+      // Apagar el motor
+      digitalWrite(MOTOR_PIN1, LOW);
+      digitalWrite(MOTOR_PIN2, LOW);
+      analogWrite(ENABLE_PIN, 0); // Apagar motor
+    }
+  } else {
+    Serial.println("Error: " + firebaseData.errorReason());
+  }
+
+  // Ajustar la persiana en función del valor del LDR
+  if (ldrValue < LDR_THRESHOLD) {
+    // Si la luz es baja, subir la persiana
+    Firebase.setInt(firebaseData, "/motorState", 1);
+  } else {
+    // Si la luz es alta, bajar la persiana
+    Firebase.setInt(firebaseData, "/motorState", 0);
+  }
+
+  delay(1000); // Esperar 1 segundo antes de la siguiente lectura
+}
